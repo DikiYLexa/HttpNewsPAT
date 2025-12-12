@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using Fizzler;
 
 namespace HttpNewsPAT
 {
@@ -14,7 +15,7 @@ namespace HttpNewsPAT
         static void Main(string[] args)
         {
             SingIn("user", "user");
-            //Console.Read();
+            
             //WebRequest request = WebRequest.Create("http://10.111.20.114/main.php");
             //HttpWebResponse response = (HttpWebResponse)request.GetResponse();
             //Console.WriteLine(response.StatusDescription);
@@ -60,6 +61,20 @@ namespace HttpNewsPAT
             string responseFromServer = new StreamReader (response.GetResponseStream()).ReadToEnd();
             Console .WriteLine(responseFromServer);
 
+        }
+        public static void ParsingHtml(string htmlCode)
+        {
+            var html = new HtmlDocument();
+            html.LoadHtml(htmlCode);
+            var Document = html.DocumentNode;
+            IEnumerable DivsNews = Documment.Descendants(0).Where(n => n.HasClass("news"));
+            foreach (HtmlNode DivNews in DivsNews)
+            {
+                var src = DivNews.ChildNodes[1].GetAttributeValue("src","none");
+                var name = DivNews.ChildNodes[3].InnerText;
+                var description = DivNews.ChildNodes[5].InnerText;
+                Console.WriteLine(name + "\n" + "Изображения: " + src + "\n" + "Описание: " + description + "\n");
+            }
         }
     }
 }
