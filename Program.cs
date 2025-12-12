@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -12,7 +13,9 @@ namespace HttpNewsPAT
     {
         static void Main(string[] args)
         {
-            WebRequest request = WebRequest.Create("http://news.permaviat.ru/main");
+            SingIn("user", "user");
+            Console.Read();
+            WebRequest request = WebRequest.Create("http://10.111.20.114/main");
             HttpWebResponse response = (HttpWebResponse)request.GetResponse();
             Console.WriteLine(response.StatusDescription);
             Stream dataStream = response.GetResponseStream();
@@ -23,6 +26,27 @@ namespace HttpNewsPAT
             dataStream.Close();
             response.Close();
             Console.Read();
+        }
+        public static void SingIn(string Login, string Password)
+        {
+            string url = "http://10.111.20.114/ajzx/login.php";
+            Debug.WriteLine($"Выполняем запрос: {url}");
+            HttpWebRequest request =(HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
+            request.ContentType = "application/x-www-from-urlencoded";
+            request.CookieContainer = new CookieContainer();
+            string postData = $"login = {Login}&password={Password}";
+            byte[] Data = Encoding.ASCII.GetBytes(postData);
+            request.ContentLength = Data.Length;
+            using(var stream = request.GetRequestStream())
+            {
+                stream.Write(Data, 0, Data.Length);
+            }
+            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+            Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
+            string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
+            Console.WriteLine(responseFromServer);
+
         }
     }
 }
