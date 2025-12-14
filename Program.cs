@@ -111,5 +111,112 @@ namespace HttpNewsPAT
                 Console.WriteLine($"Ошибка выполнения запроса: {response.StatusCode}");
             }
         }
+        public static async Task<string> GetContent()
+        {
+            if (!string.IsNullOrEmpty(Token))
+            {
+                string url = "http://10.111.20.114/main";
+                WriteLog($"Выполнение запроса: {url}");
+                httpClient.DefaultRequestHeaders.Add("token", Token);
+                HttpResponseMessage response = await httpClient.GetAsync(url);
+                WriteLog($"Статус выполнения: {response.StatusCode}");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+                else
+                {
+                    Console.WriteLine($"Ошибка выполнения запроса: {response.StatusCode}");
+                    return string.Empty;
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Ошибка выполнения запроса: не авторизован");
+                return string.Empty;
+            }
+        }
+        static void Help()
+        {
+            Console.Write("/SignIn");
+            Console.WriteLine(" (авторизация на сайте)");
+            Console.Write("/Posts");
+            Console.WriteLine(" (вывод всех постов на сайте)");
+            Console.Write("/Add");
+            Console.WriteLine(" (добавление новой записи)");
+            Console.Write("/Lenta");
+            Console.WriteLine(" (парсинг новостей с Lenta.ru)");
+        }
+        static async void SetComand()
+        {
+            try
+            {
+                string Command = Console.ReadLine();
+                if (Command.Contains("/SignIn")) await SignIn("user", "user");
+                if (Command.Contains("/Posts")) ParsingHtml(await GetContent());
+                if (Command.Contains("/Add")) AddNewPost();
+                if (Command.Contains("/Lenta")) await ParseLentaRu();
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Request error: " + ex.Message);
+            }
+        }
+        public static async Task ParseLentaRu()
+        {
+            try
+            {
+                string url = "https://lenta.ru/";
+                WriteLog($"Начинается парсинг Lenta.ru: {url}");
+
+                HttpResponseMessage response = await httpClient.GetAsync(url);
+                WriteLog($"Статус выполнения запроса к Lenta.ru: {response.StatusCode}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string htmlCode = await response.Content.ReadAsStringAsync();
+                    HtmlDocument html = new HtmlDocument();
+                    html.LoadHtml(htmlCode);
+                    HtmlNode document = html.DocumentNode;
+
+                    var newsNodes = document.SelectNodes("//a[contains(@class, 'card')] | //a[contains(@class, 'item')]");
+
+                    string parsedContent = "";
+
+                    if (newsNodes != null)
+                    {
+                        foreach (var newsItem in newsNodes.Take(10))
+                        {
+                            string title = WebUtility.HtmlDecode(newsItem.InnerText?.Trim() ?? "");
+                            string link = newsItem.GetAttributeValue("href", "");
+                            if (!string.IsNullOrEmpty(link) && !link.StartsWith("http"))
+                            {
+                                link = new Uri(new Uri(url), link).AbsoluteUri;
+                            }
+
+                            parsedContent += $"{title}\nСсылка: {link}\n\n";
+                        }
+
+                        Console.WriteLine(" Последние новости с Lenta.ru \n");
+                        Console.Write(parsedContent);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Не удалось найти новости на странице. Возможно, изменилась структура сайта.");
+                        WriteLog("Не удалось найти элементы новостей по заданным селекторам.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Ошибка при запросе к Lenta.ru: {response.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при парсинге Lenta.ru: {ex.Message}");
+                WriteLog($"Ошибка в ParseLentaRu: {ex.ToString()}");
+            }
+        }
     }
- }
+}
