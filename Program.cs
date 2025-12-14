@@ -4,77 +4,112 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
 using Fizzler;
 
 namespace HttpNewsPAT
 {
-    internal class Program
+    public class Program
     {
+        private static HttpClient httpClient = new HttpClient();
+        private static string Token;
+
         static void Main(string[] args)
         {
-            SingIn("user", "user");
-            
-            //WebRequest request = WebRequest.Create("http://10.111.20.114/main.php");
-            //HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            //Console.WriteLine(response.StatusDescription);
-            //Stream dataStream = response.GetResponseStream();
-            //StreamReader reader = new StreamReader(dataStream);
-            //string responseFromServer = reader.ReadToEnd();
-            //Console.WriteLine(responseFromServer);
-            //reader.Close();
-            //dataStream.Close();
-            //response.Close();
-            Console.Read();
-        }
-        public static void SingIn(string Login, string Password)
-        {
-            string url = "http://10.111.20.114/ajax/login.php";
-            Debug.WriteLine($"Выполняем запрос: {url}");
-            HttpWebRequest request =(HttpWebRequest)WebRequest.Create(url);
-            request.Method = "POST";
-            request.ContentType = "application/x-www-from-urlencoded";
-            request.CookieContainer = new CookieContainer();
-            string postData = $"login = {Login}&password={Password}";
-            byte[] Data = Encoding.ASCII.GetBytes(postData);
-            request.ContentLength = Data.Length;
-            using(var stream = request.GetRequestStream())
+            Debug.Listeners.Add(new TextWriterTraceListener("DebugLog.txt"));
+            Help();
+            while (true)
             {
-                stream.Write(Data, 0, Data.Length);
+                SetComand();
             }
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
-            string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
-            Console.WriteLine(responseFromServer);
-
-        }
-        public static void GetContent(Cookie Token)
-        {
-            string url = "http://10.111.20.114/main.php";
-            Debug.WriteLine($"Выполняем запрос: {url}");
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.CookieContainer = new CookieContainer();
-            request.CookieContainer.Add(Token);
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
-            string responseFromServer = new StreamReader (response.GetResponseStream()).ReadToEnd();
-            Console .WriteLine(responseFromServer);
-
         }
         public static void ParsingHtml(string htmlCode)
         {
-            var html = new HtmlDocument();
+            HtmlDocument html = new HtmlDocument();
             html.LoadHtml(htmlCode);
-            var Document = html.DocumentNode;
-            IEnumerable DivsNews = Documment.Descendants(0).Where(n => n.HasClass("news"));
-            foreach (HtmlNode DivNews in DivsNews)
+            HtmlNode document = html.DocumentNode;
+            IEnumerable<HtmlNode> divsNews = document.Descendants().Where(n => n.HasClass("news"));
+            string content = "";
+            foreach (HtmlNode divNews in divsNews)
             {
-                var src = DivNews.ChildNodes[1].GetAttributeValue("src","none");
-                var name = DivNews.ChildNodes[3].InnerText;
-                var description = DivNews.ChildNodes[5].InnerText;
-                Console.WriteLine(name + "\n" + "Изображения: " + src + "\n" + "Описание: " + description + "\n");
+                string src = divNews.ChildNodes[1].GetAttributeValue("src", "none");
+                string name = divNews.ChildNodes[3].InnerText;
+                string description = divNews.ChildNodes[5].InnerText;
+                content += $"{name}\nИзображение: {src}\nОписание: {description}\n";
+            }
+            Console.Write(content);
+        }
+        public static async void AddNewPost()
+        {
+            if (!string.IsNullOrEmpty(Token))
+            {
+                string name;
+                string description;
+                string image;
+                Console.WriteLine("Заголовок новости:");
+                name = Console.ReadLine();
+                Console.WriteLine("Текст новости");
+                description = Console.ReadLine();
+                Console.WriteLine("Ссылка на изображение:");
+                image = Console.ReadLine();
+                string url = "http://10.111.20.114/ajax/add.php";
+                WriteLog($"Выполнение запроса: {url}");
+                var postData = new FormUrlEncodedContent(new[]
+                {
+                    new KeyValuePair<string, string>("name", name),
+                    new KeyValuePair<string, string>("description", description),
+                    new KeyValuePair<string, string>("src", image),
+                    new KeyValuePair<string, string>("token", Token)
+                });
+                HttpResponseMessage response = await httpClient.PostAsync(url, postData);
+                WriteLog($"Статус выполнения: {response.StatusCode}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Запрос выполнен успешно");
+                }
+                else
+                {
+                    Console.WriteLine($"Ошибка выполнения запроса: {response.StatusCode}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Ошибка выполнения запроса: пользователь не авторизован");
+            }
+        }
+        public static void WriteLog(string debugContent)
+        {
+            Debug.WriteLine(debugContent);
+            Debug.Flush();
+        }
+        public static async Task SignIn(string Login, string Password)
+        {
+            string url = "http://10.111.20.114/ajax/login.php";
+            WriteLog($"Выполнение запроса: {url}");
+            var postData = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("login", Login),
+                new KeyValuePair<string, string>("password", Password)
+            });
+            HttpResponseMessage response = await httpClient.PostAsync(url, postData);
+            WriteLog($"Статус выполнения: {response.StatusCode}");
+            if (response.IsSuccessStatusCode)
+            {
+                string cookies = response.Headers.GetValues("Set-Cookie").FirstOrDefault();
+                if (!string.IsNullOrEmpty(cookies))
+                {
+                    Token = cookies.Split(';')[0].Split('=')[1];
+                    Console.WriteLine("успешная авторизация");
+                }
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Ошибка выполнения запроса: {response.StatusCode}");
             }
         }
     }
-}
+ }
