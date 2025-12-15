@@ -300,7 +300,7 @@ namespace HttpNewsPAT
                     int count = 0;
                     foreach (var news in newsItems)
                     {
-                        if (count >= 5) break;
+                        
 
                         if (!string.IsNullOrEmpty(news.Title))
                         {
@@ -332,11 +332,11 @@ namespace HttpNewsPAT
 
                         if (newsSectionStart >= 0)
                         {
-                            for (int i = newsSectionStart; i < Math.Min(lines.Length, newsSectionStart + 100) && count < 5; i++)
+                            for (int i = newsSectionStart; i < Math.Min(lines.Length, newsSectionStart + 100); i++)
                             {
                                 string line = lines[i].Trim();
 
-                                // Ищем дату
+                               
                                 if (line.Length > 0 && char.IsDigit(line[0]) && line.Contains("2025"))
                                 {
                                     string date = line;
