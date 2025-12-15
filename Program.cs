@@ -8,7 +8,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
-using Fizzler;
+using HtmlAgilityPack;
+
 
 namespace HttpNewsPAT
 {
@@ -17,13 +18,14 @@ namespace HttpNewsPAT
         private static HttpClient httpClient = new HttpClient();
         private static string Token;
 
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             Debug.Listeners.Add(new TextWriterTraceListener("DebugLog.txt"));
             Help();
+
             while (true)
             {
-                SetComand();
+                await SetComandAsync(); // Ожидаем команду
             }
         }
         public static void ParsingHtml(string htmlCode)
@@ -42,7 +44,7 @@ namespace HttpNewsPAT
             }
             Console.Write(content);
         }
-        public static async void AddNewPost()
+        public static async Task AddNewPostAsync()
         {
             if (!string.IsNullOrEmpty(Token))
             {
@@ -51,21 +53,25 @@ namespace HttpNewsPAT
                 string image;
                 Console.WriteLine("Заголовок новости:");
                 name = Console.ReadLine();
-                Console.WriteLine("Текст новости");
+                Console.WriteLine("Текст новости:");
                 description = Console.ReadLine();
                 Console.WriteLine("Ссылка на изображение:");
                 image = Console.ReadLine();
+
                 string url = "http://10.111.20.114/ajax/add.php";
                 WriteLog($"Выполнение запроса: {url}");
+
                 var postData = new FormUrlEncodedContent(new[]
                 {
-                    new KeyValuePair<string, string>("name", name),
-                    new KeyValuePair<string, string>("description", description),
-                    new KeyValuePair<string, string>("src", image),
-                    new KeyValuePair<string, string>("token", Token)
-                });
+            new KeyValuePair<string, string>("name", name),
+            new KeyValuePair<string, string>("description", description),
+            new KeyValuePair<string, string>("src", image),
+            new KeyValuePair<string, string>("token", Token)
+        });
+
                 HttpResponseMessage response = await httpClient.PostAsync(url, postData);
                 WriteLog($"Статус выполнения: {response.StatusCode}");
+
                 if (response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"Запрос выполнен успешно");
@@ -138,84 +144,271 @@ namespace HttpNewsPAT
         }
         static void Help()
         {
-            Console.Write("/SignIn");
+            Console.Write("/SingIn");
             Console.WriteLine(" (авторизация на сайте)");
             Console.Write("/Posts");
             Console.WriteLine(" (вывод всех постов на сайте)");
             Console.Write("/Add");
             Console.WriteLine(" (добавление новой записи)");
-            Console.Write("/Lenta");
-            Console.WriteLine(" (парсинг новостей с Lenta.ru)");
+            Console.Write("/prk");
+            Console.WriteLine(" (парсинг новостей с Радиотехнического колледжа)");
         }
-        static async void SetComand()
+        static async Task SetComandAsync()
         {
             try
             {
                 string Command = Console.ReadLine();
-                if (Command.Contains("/SignIn")) await SignIn("user", "user");
-                if (Command.Contains("/Posts")) ParsingHtml(await GetContent());
-                if (Command.Contains("/Add")) AddNewPost();
-                if (Command.Contains("/Lenta")) await ParseLentaRu();
 
+                if (Command.Contains("/SingIn"))
+                    await SignIn("user", "user"); 
+
+                if (Command.Contains("/Posts"))
+                    ParsingHtml(await GetContent());
+
+                if (Command.Contains("/Add"))
+                    await AddNewPostAsync(); 
+
+                if (Command.Contains("/prk"))
+                    await ParsePrkRu();
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Request error: " + ex.Message);
             }
         }
-        public static async Task ParseLentaRu()
+        public class NewsItem
+        {
+            public string Date { get; set; }
+            public string Title { get; set; }
+            public string Description { get; set; }
+        }
+        public static async Task ParsePrkRu()
         {
             try
             {
-                string url = "https://lenta.ru/";
-                WriteLog($"Начинается парсинг Lenta.ru: {url}");
+                string url = "https://prk.perm.ru/novosti-i-sobytiya";
+                WriteLog($"Начинается парсинг Prk.ru: {url}");
 
                 HttpResponseMessage response = await httpClient.GetAsync(url);
-                WriteLog($"Статус выполнения запроса к Lenta.ru: {response.StatusCode}");
+                WriteLog($"Статус выполнения запроса к Prk.ru: {response.StatusCode}");
 
                 if (response.IsSuccessStatusCode)
                 {
                     string htmlCode = await response.Content.ReadAsStringAsync();
                     HtmlDocument html = new HtmlDocument();
                     html.LoadHtml(htmlCode);
-                    HtmlNode document = html.DocumentNode;
 
-                    var newsNodes = document.SelectNodes("//a[contains(@class, 'card')] | //a[contains(@class, 'item')]");
+                 
+                    string pageText = WebUtility.HtmlDecode(html.DocumentNode.InnerText);
 
-                    string parsedContent = "";
+                    
+                    string parsedContent = "\n=== Последние новости с Prk.ru ===\n\n";
 
-                    if (newsNodes != null)
+                   
+                    string[] lines = pageText.Split(new[] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+                    
+                    int newsSectionStart = -1;
+
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        foreach (var newsItem in newsNodes.Take(10))
+                        string line = lines[i].Trim();
+                        if (line.Equals("Новости и события", StringComparison.OrdinalIgnoreCase))
                         {
-                            string title = WebUtility.HtmlDecode(newsItem.InnerText?.Trim() ?? "");
-                            string link = newsItem.GetAttributeValue("href", "");
-                            if (!string.IsNullOrEmpty(link) && !link.StartsWith("http"))
+                            newsSectionStart = i;
+                            break;
+                        }
+                    }
+
+                    List<NewsItem> newsItems = new List<NewsItem>();
+
+                    if (newsSectionStart >= 0)
+                    {
+                       
+                        for (int i = newsSectionStart + 1; i < lines.Length; i++)
+                        {
+                            string line = lines[i].Trim();
+
+                            if (string.IsNullOrEmpty(line)) continue;
+
+                           
+                            if (line.Contains("Продолжая использовать наш сайт"))
+                                break;
+
+                            
+                            if (System.Text.RegularExpressions.Regex.IsMatch(line, @"^\d{1,2}\s+[а-яА-Я]+\s+\d{4}$"))
                             {
-                                link = new Uri(new Uri(url), link).AbsoluteUri;
+                                
+                                string date = line;
+                                string title = "";
+                                StringBuilder description = new StringBuilder();
+
+                              
+                                for (int j = i + 1; j < lines.Length; j++)
+                                {
+                                    string nextLine = lines[j].Trim();
+                                    if (!string.IsNullOrEmpty(nextLine))
+                                    {
+                                      
+                                        if (System.Text.RegularExpressions.Regex.IsMatch(nextLine, @"^\d{1,2}\s+[а-яА-Я]+\s+\d{4}$"))
+                                        {
+                                            break;
+                                        }
+
+                                        title = nextLine;
+                                        i = j; 
+
+                                        
+                                        for (int k = j + 1; k < lines.Length; k++)
+                                        {
+                                            string descLine = lines[k].Trim();
+
+                                          
+                                            if (string.IsNullOrEmpty(descLine) ||
+                                                System.Text.RegularExpressions.Regex.IsMatch(descLine, @"^\d{1,2}\s+[а-яА-Я]+\s+\d{4}$") ||
+                                                descLine.Contains("Продолжая использовать наш сайт"))
+                                            {
+                                                i = k - 1; 
+                                                break;
+                                            }
+
+                                           
+                                            description.AppendLine(descLine);
+                                        }
+                                        break;
+                                    }
+                                }
+
+                               
+                                string shortDescription = description.ToString().Trim();
+                                if (shortDescription.Length > 200)
+                                {
+                                    shortDescription = shortDescription.Substring(0, 200) + "...";
+                                }
+
+                                newsItems.Add(new NewsItem
+                                {
+                                    Date = date,
+                                    Title = title,
+                                    Description = shortDescription
+                                });
+                            }
+                        }
+                    }
+
+                  
+                    int count = 0;
+                    foreach (var news in newsItems)
+                    {
+                        if (count >= 5) break;
+
+                        if (!string.IsNullOrEmpty(news.Title))
+                        {
+                            parsedContent += $" {news.Date}\n";
+                            parsedContent += $" {news.Title}\n";
+
+                            if (!string.IsNullOrEmpty(news.Description))
+                            {
+                                parsedContent += $" {news.Description}\n";
                             }
 
-                            parsedContent += $"{title}\nСсылка: {link}\n\n";
+                            parsedContent += "────────────────────\n";
+                            count++;
                         }
+                    }
 
-                        Console.WriteLine(" Последние новости с Lenta.ru \n");
-                        Console.Write(parsedContent);
+                    if (count > 0)
+                    {
+                        Console.WriteLine(parsedContent);
+                        WriteLog($"Успешно спаршено {count} новостей с описаниями");
                     }
                     else
                     {
-                        Console.WriteLine("Не удалось найти новости на странице. Возможно, изменилась структура сайта.");
-                        WriteLog("Не удалось найти элементы новостей по заданным селекторам.");
+                        
+                        Console.WriteLine("Пробуем упрощенный метод парсинга...\n");
+
+                        parsedContent = "\n=== Последние новости с Prk.ru ===\n\n";
+                        count = 0;
+
+                        if (newsSectionStart >= 0)
+                        {
+                            for (int i = newsSectionStart; i < Math.Min(lines.Length, newsSectionStart + 100) && count < 5; i++)
+                            {
+                                string line = lines[i].Trim();
+
+                                // Ищем дату
+                                if (line.Length > 0 && char.IsDigit(line[0]) && line.Contains("2025"))
+                                {
+                                    string date = line;
+                                    string title = "";
+                                    string description = "";
+
+                                    
+                                    for (int j = i + 1; j < Math.Min(lines.Length, i + 10); j++)
+                                    {
+                                        string nextLine = lines[j].Trim();
+                                        if (!string.IsNullOrEmpty(nextLine) && !nextLine.Contains("2025"))
+                                        {
+                                            title = nextLine;
+
+                                            
+                                            StringBuilder descBuilder = new StringBuilder();
+                                            for (int k = j + 1; k < Math.Min(lines.Length, j + 10); k++)
+                                            {
+                                                string descLine = lines[k].Trim();
+                                                if (string.IsNullOrEmpty(descLine) ||
+                                                    (descLine.Contains("2025") && char.IsDigit(descLine[0])))
+                                                    break;
+
+                                                descBuilder.Append(descLine + " ");
+                                            }
+
+                                            description = descBuilder.ToString().Trim();
+                                            if (description.Length > 150)
+                                            {
+                                                description = description.Substring(0, 150) + "...";
+                                            }
+
+                                            break;
+                                        }
+                                    }
+
+                                    if (!string.IsNullOrEmpty(title))
+                                    {
+                                        parsedContent += $" {date}\n";
+                                        parsedContent += $" {title}\n";
+
+                                        if (!string.IsNullOrEmpty(description))
+                                        {
+                                            parsedContent += $" {description}\n";
+                                        }
+
+                                        parsedContent += "────────────────────\n";
+                                        count++;
+                                    }
+                                }
+                            }
+
+                            if (count > 0)
+                            {
+                                Console.WriteLine(parsedContent);
+                            }
+                            else
+                            {
+                                Console.WriteLine("Не удалось найти новости с описаниями.");
+                            }
+                        }
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"Ошибка при запросе к Lenta.ru: {response.StatusCode}");
+                    Console.WriteLine($"Ошибка при запросе к Prk.ru: {response.StatusCode}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при парсинге Lenta.ru: {ex.Message}");
-                WriteLog($"Ошибка в ParseLentaRu: {ex.ToString()}");
+                Console.WriteLine($"Ошибка при парсинге Prk.ru: {ex.Message}");
+                WriteLog($"Ошибка в ParsePrkRu: {ex.ToString()}");
             }
         }
     }
